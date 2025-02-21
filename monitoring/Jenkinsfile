@@ -71,7 +71,7 @@ pipeline {
                 script {
                     sh """
                     aws ssm send-command --document-name "AWS-RunShellScript" \
-                        --targets Key=instanceIds,Values=${env.PRIVATE_MONITORING_ID} \
+                        --targets Key=instanceIds,Values="$PRIVATE_MONITORING_ID" \
                         --parameters 'commands=[
                             "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
                             
@@ -92,7 +92,7 @@ pipeline {
                             "echo \\"✅ Docker Compose 설치 중...\\"",
                             "sudo apt install -y jq",
                             "DOCKER_COMPOSE_VERSION=\$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r \\".tag_name\\")",
-                            "sudo curl -L \\"https://github.com/docker/compose/releases/download/\${DOCKER_COMPOSE_VERSION}/docker-compose-$(uname -s)-$(uname -m)\\" -o /usr/local/bin/docker-compose",
+                            "sudo curl -L \\"https://github.com/docker/compose/releases/download/\${DOCKER_COMPOSE_VERSION}/docker-compose-\$(uname -s)-\$(uname -m)\\" -o /usr/local/bin/docker-compose",
                             "sudo chmod +x /usr/local/bin/docker-compose",
                             
                             "echo \\"✅ 설치된 버전 확인 중...\\"",
@@ -116,7 +116,7 @@ pipeline {
                             "sleep 5",
                             "docker inspect --format='{{.State.Running}}' my-app"
                         ]' \
-                        --region ${env.AWS_REGION}
+                        --region "$AWS_REGION"
                     """
                 }
             }
