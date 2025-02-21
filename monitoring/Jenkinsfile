@@ -72,18 +72,17 @@ pipeline {
                     sh """
                     aws ssm send-command --document-name "AWS-RunShellScript" \
                         --targets Key=instanceIds,Values=${PRIVATE_MONITORING_ID} \
-                        --parameters commands=[
-                            "echo '✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기'",
+                        --parameters 'commands=["echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
                             "git pull origin dev",
                             "cd /home/ubuntu/Cloud-repo/monitoring",
                             "docker-compose down",
                             "docker-compose up -d",
-                            "echo '✅ 컨테이너 실행 상태 확인'",
+                            "echo \\"✅ 컨테이너 실행 상태 확인\\"",
                             "docker ps -a",
-                            "echo '✅ 컨테이너 헬스 체크'",
+                            "echo \\"✅ 컨테이너 헬스 체크\\"",
                             "sleep 5",
-                            "docker inspect --format='{{.State.Running}}' my-app"
-                        ] \
+                            "docker inspect --format=\'{{.State.Running}}\' my-app"
+                        ]' \
                         --region ${AWS_REGION}
                     """
                 }
