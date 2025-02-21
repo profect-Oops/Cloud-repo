@@ -2,7 +2,7 @@ version: '3.7'
 
 services:
   prometheus:
-    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/oops/monitoring:prometheus
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:prometheus"
     container_name: prometheus
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
@@ -13,7 +13,7 @@ services:
       - monitoring
 
   grafana:
-    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/oops/monitoring:grafana
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:grafana"
     container_name: grafana
     ports:
       - "3000:3000"
@@ -22,7 +22,7 @@ services:
       - monitoring
 
   node-exporter:
-    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/oops/monitoring:node-exporter
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:node-exporter"
     container_name: node-exporter
     restart: always
     ports:
@@ -31,7 +31,7 @@ services:
       - monitoring
 
   loki:
-    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/oops/monitoring:loki
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:loki"
     container_name: loki
     ports:
       - "3100:3100"
@@ -40,7 +40,7 @@ services:
       - monitoring
 
   promtail:
-    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/oops/monitoring:promtail
+    image: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:promtail"
     container_name: promtail
     volumes:
       - ./promtail-config.yml:/etc/promtail/promtail-config.yml
