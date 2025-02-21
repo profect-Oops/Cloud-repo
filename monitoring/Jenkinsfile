@@ -4,18 +4,26 @@ pipeline {
     environment {
         AWS_REGION = credentials('AWS_REGION')  // Jenkins Credentials에서 가져오기
         ECR_REPO = credentials('ECR_REPO')  // Amazon ECR 리포지토리
-        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         PRIVATE_MONITORING_ID = credentials('PRIVATE_MONITORING_ID')  // 프라이빗 EC2 ID
     }
 
     stages {
         stage('Checkout Repository') {
-				    steps {
-				        script {
-				            checkout scm // Jenkins의 SCM 설정에서 자동으로 체크아웃 수행
-				        }
-				    }
-				} 
+            steps {
+                script {
+                    checkout scm
+                }
+            }
+        }
+
+        stage('Get AWS Account ID') {
+            steps {
+                script {
+                    env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                    echo "✅ AWS_ACCOUNT_ID: ${env.AWS_ACCOUNT_ID}"  // Jenkins 로그에서 확인
+                }
+            }
+        }
 
         stage('Pull latest images from Docker Hub') {
             steps {
@@ -31,22 +39,21 @@ pipeline {
             }
         }
 
-
         stage('Tag and Push to ECR') {
             steps {
                 script {
                     sh """
-                    docker tag prom/prometheus:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:prometheus
-                    docker tag grafana/grafana:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:grafana
-                    docker tag prom/node-exporter:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:node-exporter
-                    docker tag grafana/loki:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:loki
-                    docker tag grafana/promtail:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:promtail
+                    docker tag prom/prometheus:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:prometheus
+                    docker tag grafana/grafana:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:grafana
+                    docker tag prom/node-exporter:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:node-exporter
+                    docker tag grafana/loki:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:loki
+                    docker tag grafana/promtail:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:promtail
 
-                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:prometheus
-                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:grafana
-                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:node-exporter
-                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:loki
-                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:promtail
+                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:prometheus
+                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:grafana
+                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:node-exporter
+                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:loki
+                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:promtail
                     """
                 }
             }
@@ -57,25 +64,20 @@ pipeline {
                 script {
                     sh """
                     aws ssm send-command --document-name "AWS-RunShellScript" \
-                        --targets Key=instanceIds,Values=$PRIVATE_INSTANCE_ID \
+                        --targets Key=instanceIds,Values=${PRIVATE_MONITORING_ID} \
                         --parameters commands=[
                             "echo '✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기'",
-                            "git pull origin dev",  // 최신 코드 가져오기
-                            "cd /home/ubuntu/Cloud-repo/monitoring",  // GitHub에서 받은 디렉토리로 이동
-                            
-                            "docker-compose down",  // 기존 컨테이너 정리
-
-                            "echo '✅ 새로운 Docker 컨테이너 실행 (docker-compose up -d)'",
-                            "docker-compose up -d",  // Docker Compose로 컨테이너 실행
-
+                            "git pull origin dev",
+                            "cd /home/ubuntu/Cloud-repo/monitoring",
+                            "docker-compose down",
+                            "docker-compose up -d",
                             "echo '✅ 컨테이너 실행 상태 확인'",
                             "docker ps -a",
-
                             "echo '✅ 컨테이너 헬스 체크'",
                             "sleep 5",
                             "docker inspect --format='{{.State.Running}}' my-app"
                         ] \
-                        --region $AWS_REGION
+                        --region ${AWS_REGION}
                     """
                 }
             }
