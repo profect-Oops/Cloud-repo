@@ -20,10 +20,10 @@ pipeline {
         stage('Get AWS Account ID') { //ECR 접근 시 필요
             steps {
                 script {
-                    AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                    env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
                 }
             }
-        }   
+        }}   
 
         stage('Pull latest images from Docker Hub') {
             steps {
