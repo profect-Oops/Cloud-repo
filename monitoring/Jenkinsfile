@@ -16,11 +16,46 @@ pipeline {
 				    }
 				}
 
-        stage('Build') {
+
+        stage('Get AWS Account ID') { //ECR 접근 시 필요
             steps {
                 script {
-                    dockerImage = docker.build("${ECR_REPO}:latest")
-                    dockerImage.push('latest')
+                    AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                }
+            }
+        }   
+
+        stage('Pull latest images from Docker Hub') {
+            steps {
+                script {
+                    sh """
+                    docker pull prom/prometheus:latest
+                    docker pull grafana/grafana:latest
+                    docker pull prom/node-exporter:latest
+                    docker pull grafana/loki:latest
+                    docker pull grafana/promtail:latest
+                    """
+                }
+            }
+        }
+
+
+        stage('Tag and Push to ECR') {
+            steps {
+                script {
+                    sh """
+                    docker tag prom/prometheus:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:prometheus
+                    docker tag grafana/grafana:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:grafana
+                    docker tag prom/node-exporter:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:node-exporter
+                    docker tag grafana/loki:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:loki
+                    docker tag grafana/promtail:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:promtail
+
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:prometheus
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:grafana
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:node-exporter
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:loki
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:promtail
+                    """
                 }
             }
         }
@@ -37,7 +72,6 @@ pipeline {
                             "cd /home/ubuntu/Cloud-repo/monitoring",  // GitHub에서 받은 디렉토리로 이동
                             
                             "docker-compose down",  // 기존 컨테이너 정리
-                            "docker pull $ECR_REPO:latest",  // 최신 이미지 가져오기
 
                             "echo '✅ 새로운 Docker 컨테이너 실행 (docker-compose up -d)'",
                             "docker-compose up -d",  // Docker Compose로 컨테이너 실행
