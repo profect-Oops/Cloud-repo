@@ -1,0 +1,58 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = credentials('AWS_REGION')  // Jenkins Credentials에서 가져오기
+        ECR_REPO = credentials('ECR_REPO')  // Amazon ECR 리포지토리
+        PRIVATE_MONITORING_ID = credentials('PRIVATE_MONITORING_ID')  // 프라이빗 EC2 ID
+    }
+
+    stages {
+        stage('Checkout Repository') {
+				    steps {
+				        script {
+				            checkout scm // Jenkins의 SCM 설정에서 자동으로 체크아웃 수행
+				        }
+				    }
+				}
+
+        stage('Build') {
+            steps {
+                script {
+                    dockerImage = docker.build("${ECR_REPO}:latest")
+                    dockerImage.push('latest')
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                script {
+                    sh """
+                    aws ssm send-command --document-name "AWS-RunShellScript" \
+                        --targets Key=instanceIds,Values=$PRIVATE_INSTANCE_ID \
+                        --parameters commands=[
+                            "echo '✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기'",
+                            "git pull origin dev",  // 최신 코드 가져오기
+                            "cd /home/ubuntu/Cloud-repo/monitoring",  // GitHub에서 받은 디렉토리로 이동
+                            
+                            "docker-compose down",  // 기존 컨테이너 정리
+                            "docker pull $ECR_REPO:latest",  // 최신 이미지 가져오기
+
+                            "echo '✅ 새로운 Docker 컨테이너 실행 (docker-compose up -d)'",
+                            "docker-compose up -d",  // Docker Compose로 컨테이너 실행
+
+                            "echo '✅ 컨테이너 실행 상태 확인'",
+                            "docker ps -a",
+
+                            "echo '✅ 컨테이너 헬스 체크'",
+                            "sleep 5",
+                            "docker inspect --format='{{.State.Running}}' my-app"
+                        ] \
+                        --region $AWS_REGION
+                    """
+                }
+            }
+        }
+    }
+}
