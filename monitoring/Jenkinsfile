@@ -71,7 +71,7 @@ pipeline {
         script {
             sh """
             aws ssm send-command --document-name "AWS-RunShellScript" \
-                --targets Key=instanceIds,Values=${PRIVATE_INSTANCE_ID} \
+                --targets Key=instanceIds,Values=${PRIVATE_MONITORING_ID} \
                 --parameters 'commands=[
                     "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
                     
