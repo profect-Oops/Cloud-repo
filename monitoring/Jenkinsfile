@@ -4,6 +4,7 @@ pipeline {
     environment {
         AWS_REGION = credentials('AWS_REGION')  // Jenkins Credentials에서 가져오기
         ECR_REPO = credentials('ECR_REPO')  // Amazon ECR 리포지토리
+        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         PRIVATE_MONITORING_ID = credentials('PRIVATE_MONITORING_ID')  // 프라이빗 EC2 ID
     }
 
@@ -14,16 +15,7 @@ pipeline {
 				            checkout scm // Jenkins의 SCM 설정에서 자동으로 체크아웃 수행
 				        }
 				    }
-				}
-
-
-        stage('Get AWS Account ID') {
-            steps {
-                script {
-                    env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
-                }
-            }
-        }  
+				} 
 
         stage('Pull latest images from Docker Hub') {
             steps {
