@@ -2,9 +2,7 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = credentials('AWS_REGION')  // Jenkins Credentials에서 가져오기
-        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
-        PRIVATE_MONITORING_ID = credentials('PRIVATE_MONITORING_ID')  // 프라이빗 EC2 ID
+        PRIVATE_MONITORING_ID = "i-0a120872eb49bee5d"  // 프라이빗 EC2 인스턴스 ID
     }
 
     stages {
@@ -20,7 +18,7 @@ pipeline {
             steps {
                 script {
                     sh """
-                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 941377153895.dkr.ecr.ap-northeast-2.amazonaws.com
                     """
                 }
             }
@@ -37,15 +35,18 @@ pipeline {
     
                                 "cd /home/ubuntu || exit 1",
     
-                                "echo \\"✅ AWS CLI 버전 확인...\\"",
-                                "aws --version",
-    
-                                "git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
-    
+                                "if [ -d \\"Cloud-repo\\" ]; then",
+                                "   echo \\"✅ Cloud-repo 폴더가 존재합니다. Git Pull 수행 중...\\"",
+                                "   cd Cloud-repo && git pull origin dev",
+                                "else",
+                                "   echo \\"❗ Cloud-repo 폴더가 없습니다. Git Clone 수행 중...\\"",
+                                "   git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
+                                "fi",
+
                                 "cd /home/ubuntu/Cloud-repo/monitoring",
-    
+
                                 "echo \\"✅ ECR 로그인 중...\\"",
-                                "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com",
+                                "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 941377153895.dkr.ecr.ap-northeast-2.amazonaws.com",
     
                                 "echo \\"✅ 최신 이미지 Pull...\\"",
                                 "docker-compose pull",
@@ -59,16 +60,17 @@ pipeline {
                                 "sleep 5",
                                 "docker inspect --format={{.State.Running}} my-app || echo \\"❌ 컨테이너가 정상적으로 실행되지 않았습니다.\\""
                             ]' \\
-                            --region "${AWS_REGION}" \\
+                            --region "ap-northeast-2" \\
                             --query "Command.CommandId" --output text
                     """, returnStdout: true).trim()
 
                     echo "🔍 SSM Command ID: ${commandId}"
 
-                    sleep 10  // SSM 명령이 실행될 시간을 줌
+                    // SSM 실행 결과 확인
+                    sleep 10  // SSM 명령 실행을 위한 대기 시간
 
                     def ssmStatus = sh(script: """
-                        aws ssm list-command-invocations --command-id ${commandId} --details --region ${AWS_REGION} \\
+                        aws ssm list-command-invocations --command-id ${commandId} --details --region ap-northeast-2 \\
                         --query "CommandInvocations[0].Status" --output text
                     """, returnStdout: true).trim()
 
