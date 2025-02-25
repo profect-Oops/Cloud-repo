@@ -29,52 +29,56 @@ pipeline {
         stage('Deploy') {
             steps {
                 script {
-                    sh """
-                    aws ssm send-command --document-name "AWS-RunShellScript" \\
-                        --targets Key=instanceIds,Values=\\"${PRIVATE_MONITORING_ID}\\" \\
-                        --parameters 'commands=[
-                            "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
+                    def commandId = sh(script: """
+                        aws ssm send-command --document-name "AWS-RunShellScript" \\
+                            --targets Key=instanceIds,Values="${PRIVATE_MONITORING_ID}" \\
+                            --parameters 'commands=[
+                                "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
+    
+                                "cd /home/ubuntu || exit 1",
+    
+                                "echo \\"✅ AWS CLI 버전 확인...\\"",
+                                "aws --version",
+    
+                                "git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
+    
+                                "cd /home/ubuntu/Cloud-repo/monitoring",
+    
+                                "echo \\"✅ ECR 로그인 중...\\"",
+                                "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com",
+    
+                                "echo \\"✅ 최신 이미지 Pull...\\"",
+                                "docker-compose pull",
+    
+                                "docker-compose up -d",
+                                
+                                "echo \\"✅ 컨테이너 실행 상태 확인...\\"",
+                                "docker ps -a",
+    
+                                "echo \\"✅ 컨테이너 헬스 체크...\\"",
+                                "sleep 5",
+                                "docker inspect --format={{.State.Running}} my-app || echo \\"❌ 컨테이너가 정상적으로 실행되지 않았습니다.\\""
+                            ]' \\
+                            --region "${AWS_REGION}" \\
+                            --query "Command.CommandId" --output text
+                    """, returnStdout: true).trim()
 
-                            "cd /home/ubuntu || exit 1",
+                    echo "🔍 SSM Command ID: ${commandId}"
 
-                            "echo \\"✅ AWS CLI 버전 확인...\\"",
-                            "aws --version",
+                    sleep 10  // SSM 명령이 실행될 시간을 줌
 
-                            "if [ -d \\"Cloud-repo\\" ]; then",
-                            "   echo \\"✅ Cloud-repo 폴더가 존재합니다. Git Pull 수행 중...\\"",
-                            "   cd Cloud-repo && git status > /dev/null 2>&1 || (echo \\"❗ Git 리포지토리가 아님. 재설정 중...\\" && cd .. && rm -rf Cloud-repo && git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev)",
-                            "   git pull origin dev",
-                            "else",
-                            "   echo \\"❗ Cloud-repo 폴더가 없습니다. Git Clone 수행 중...\\"",
-                            "   git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
-                            "fi",
+                    def ssmStatus = sh(script: """
+                        aws ssm list-command-invocations --command-id ${commandId} --details --region ${AWS_REGION} \\
+                        --query "CommandInvocations[0].Status" --output text
+                    """, returnStdout: true).trim()
 
-                            "cd /home/ubuntu/Cloud-repo/monitoring",
+                    echo "📌 SSM Command Status: ${ssmStatus}"
 
-                            "echo \\"✅ ECR 로그인 중...\\"",
-                            "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com",
+                    if (ssmStatus != "Success") {
+                        error("🚨 SSM 배포 실패! Command ID: ${commandId}")
+                    }
 
-                            "echo \\"✅ 최신 이미지 Pull...\\"",
-                            "docker-compose pull",
-
-                            "echo \\"✅ 실행 중인 컨테이너 확인 및 재시작...\\"",
-                            "RUNNING_CONTAINERS=\$(docker ps -q | wc -l)",
-                            "if [ \$RUNNING_CONTAINERS -gt 0 ]; then",
-                            "   echo \\"✅ 실행 중인 컨테이너가 있습니다. 재시작 중...\\"",
-                            "   docker ps -q | xargs -r docker restart",
-                            "else",
-                            "   echo \\"✅ 실행 중인 컨테이너가 없습니다. 새로 실행합니다.\\" && docker-compose up -d --remove-orphans",
-                            "fi",
-
-                            "echo \\"✅ 컨테이너 실행 상태 확인...\\"",
-                            "docker ps -a",
-
-                            "echo \\"✅ 컨테이너 헬스 체크...\\"",
-                            "sleep 5",
-                            "docker inspect --format={{.State.Running}} my-app || echo \\"❌ 컨테이너가 정상적으로 실행되지 않았습니다.\\""
-                        ]' \\
-                        --region "${AWS_REGION}"
-                    """
+                    echo "✅ SSM 배포 성공!"
                 }
             }
         }
