@@ -3,7 +3,6 @@ pipeline {
 
     environment {
         AWS_REGION = credentials('AWS_REGION')  // Jenkins Credentials에서 가져오기
-        ECR_REPO = credentials('ECR_REPO')  // Amazon ECR 리포지토리
         PRIVATE_MONITORING_ID = credentials('PRIVATE_MONITORING_ID')  // 프라이빗 EC2 ID
     }
 
@@ -19,7 +18,10 @@ pipeline {
         stage('Get AWS Account ID') {
             steps {
                 script {
-                    env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                    withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
+                        env.AWS_ACCOUNT_ID = AWS_ACCOUNT_ID
+                        echo "✅ AWS_ACCOUNT_ID 가져옴: ${AWS_ACCOUNT_ID}"
+                    }
                 }
             }
         }
@@ -27,41 +29,11 @@ pipeline {
         stage('Login to ECR') {   
             steps {
                 script {
-                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-                }
-            }
-        }
-
-        stage('Pull latest images from Docker Hub') {
-            steps {
-                script {
-                    sh """
-                    docker pull prom/prometheus:latest
-                    docker pull grafana/grafana:latest
-                    docker pull prom/node-exporter:latest
-                    docker pull grafana/loki:latest
-                    docker pull grafana/promtail:latest
-                    """
-                }
-            }
-        }
-
-        stage('Tag and Push to ECR') {
-            steps {
-                script {
-                    sh """
-                    docker tag prom/prometheus:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:prometheus
-                    docker tag grafana/grafana:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:grafana
-                    docker tag prom/node-exporter:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:node-exporter
-                    docker tag grafana/loki:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:loki
-                    docker tag grafana/promtail:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:promtail
-
-                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:prometheus
-                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:grafana
-                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:node-exporter
-                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:loki
-                    docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:promtail
-                    """
+                    withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
+                        sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        """
+                    }
                 }
             }
         }
@@ -88,14 +60,15 @@ pipeline {
                             "echo \\"✅ ECR 로그인 중...\\"",
                             "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com",
 
-                            "echo \\"✅ 실행 중인 컨테이너 재시작...\\"",
-                            "docker ps -q | xargs -r docker restart",
-
-                            "echo \\"✅ ECR 최신 이미지 Pull...\\"",
-                            "docker-compose pull",
-
-                            "echo \\"✅ 새로운 Docker 컨테이너 실행 (docker-compose up -d)...\\"",
-                            "docker-compose up -d --remove-orphans",
+                            "echo \\"✅ 실행 중인 컨테이너 확인 및 재시작...\\"",
+                            "if [ \$(docker ps -q | wc -l) -gt 0 ]; then",
+                            "   echo \\"✅ 실행 중인 컨테이너가 있습니다. 재시작 중...\\"",
+                            "   docker ps -q | xargs -r docker restart",
+                            "else",
+                            "   echo \\"✅ 실행 중인 컨테이너가 없습니다. 새로 실행합니다.\\"",
+                            "   docker-compose pull",
+                            "   docker-compose up -d --remove-orphans",
+                            "fi",
 
                             "echo \\"✅ 컨테이너 실행 상태 확인...\\"",
                             "docker ps -a",
