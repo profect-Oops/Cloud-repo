@@ -48,6 +48,8 @@ pipeline {
                             "   git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
                             "fi",
 
+                            "cd /home/ubuntu/Cloud-repo/monitoring",
+
                             "echo \\"✅ ECR 로그인 중...\\"",
                             "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com",
 
