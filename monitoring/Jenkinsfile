@@ -73,11 +73,17 @@ pipeline {
                     aws ssm send-command --document-name "AWS-RunShellScript" \\
                         --targets Key=instanceIds,Values="$PRIVATE_MONITORING_ID" \\
                         --parameters 'commands=[
-
                             "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
 
-                            "echo \\"✅ 최신 코드 가져오기...\\"",
-                            "[ -d \\"Cloud-repo\\" ] && cd Cloud-repo && git pull origin dev || git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
+                            "cd /home/ubuntu || exit 1",
+
+                            "if [ -d \\"Cloud-repo\\" ]; then",
+                            "   echo \\"✅ Cloud-repo 폴더가 존재합니다. Git Pull 수행 중...\\"",
+                            "   cd Cloud-repo && git pull origin dev",
+                            "else",
+                            "   echo \\"❗ Cloud-repo 폴더가 없습니다. Git Clone 수행 중...\\"",
+                            "   git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
+                            "fi",
 
                             "echo \\"✅ ECR 로그인 중...\\"",
                             "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com",
