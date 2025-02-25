@@ -3,6 +3,7 @@ pipeline {
 
     environment {
         AWS_REGION = credentials('AWS_REGION')  // Jenkins Credentials에서 가져오기
+        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
         PRIVATE_MONITORING_ID = credentials('PRIVATE_MONITORING_ID')  // 프라이빗 EC2 ID
     }
 
@@ -15,25 +16,12 @@ pipeline {
             }
         }
 
-        stage('Get AWS Account ID') {
+        stage('Login to ECR') {
             steps {
                 script {
-                    withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
-                        env.AWS_ACCOUNT_ID = AWS_ACCOUNT_ID
-                        echo "✅ AWS_ACCOUNT_ID 가져옴: ${AWS_ACCOUNT_ID}"
-                    }
-                }
-            }
-        }
-
-        stage('Login to ECR') {   
-            steps {
-                script {
-                    withCredentials([string(credentialsId: 'AWS_ACCOUNT_ID', variable: 'AWS_ACCOUNT_ID')]) {
-                        sh """
-                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                        """
-                    }
+                    sh """
+                    aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                    """
                 }
             }
         }
@@ -43,11 +31,14 @@ pipeline {
                 script {
                     sh """
                     aws ssm send-command --document-name "AWS-RunShellScript" \\
-                        --targets Key=instanceIds,Values="$PRIVATE_MONITORING_ID" \\
+                        --targets Key=instanceIds,Values="${PRIVATE_MONITORING_ID}" \\
                         --parameters 'commands=[
                             "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
 
                             "cd /home/ubuntu || exit 1",
+
+                            "echo \\"✅ AWS CLI 버전 확인...\\"",
+                            "aws --version",
 
                             "if [ -d \\"Cloud-repo\\" ]; then",
                             "   echo \\"✅ Cloud-repo 폴더가 존재합니다. Git Pull 수행 중...\\"",
@@ -58,7 +49,10 @@ pipeline {
                             "fi",
 
                             "echo \\"✅ ECR 로그인 중...\\"",
-                            "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com",
+                            "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com",
+
+                            "echo \\"✅ 최신 이미지 Pull...\\"",
+                            "docker-compose pull",
 
                             "echo \\"✅ 실행 중인 컨테이너 확인 및 재시작...\\"",
                             "if [ \$(docker ps -q | wc -l) -gt 0 ]; then",
@@ -66,7 +60,6 @@ pipeline {
                             "   docker ps -q | xargs -r docker restart",
                             "else",
                             "   echo \\"✅ 실행 중인 컨테이너가 없습니다. 새로 실행합니다.\\"",
-                            "   docker-compose pull",
                             "   docker-compose up -d --remove-orphans",
                             "fi",
 
@@ -77,7 +70,7 @@ pipeline {
                             "sleep 5",
                             "docker inspect --format='{{.State.Running}}' my-app"
                         ]' \\
-                        --region "$AWS_REGION"
+                        --region "${AWS_REGION}"
                     """
                 }
             }
