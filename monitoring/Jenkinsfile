@@ -70,44 +70,26 @@ pipeline {
             steps {
                 script {
                     sh """
-                    aws ssm send-command --document-name "AWS-RunShellScript" \
-                        --targets Key=instanceIds,Values="$PRIVATE_MONITORING_ID" \
+                    aws ssm send-command --document-name "AWS-RunShellScript" \\
+                        --targets Key=instanceIds,Values="$PRIVATE_MONITORING_ID" \\
                         --parameters 'commands=[
-                            "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
-                            
-                            "sudo apt update -y && sudo apt upgrade -y",
-                            
-                            "echo \\"✅ Docker 최신 버전 설치 중...\\"",
-                            "sudo mkdir -p /etc/apt/keyrings",
-                            "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo tee /etc/apt/keyrings/docker.asc > /dev/null",
-                            "sudo chmod a+r /etc/apt/keyrings/docker.asc",
-                            "echo \\"deb [arch=\$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \$(lsb_release -cs) stable\\" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null",
-                            "sudo apt update",
-                            "sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin",
-                            
-                            "echo \\"✅ Docker 서비스 활성화 및 사용자 그룹 추가 중...\\"",
-                            "sudo systemctl enable --now docker",
-                            "sudo usermod -aG docker ubuntu",
 
-                            "echo \\"✅ Docker Compose 설치 중...\\"",
-                            "sudo apt install -y jq",
-                            "DOCKER_COMPOSE_VERSION=\$(curl -s https://api.github.com/repos/docker/compose/releases/latest | jq -r \\".tag_name\\")",
-                            "sudo curl -L \\"https://github.com/docker/compose/releases/download/\${DOCKER_COMPOSE_VERSION}/docker-compose-\$(uname -s)-\$(uname -m)\\" -o /usr/local/bin/docker-compose",
-                            "sudo chmod +x /usr/local/bin/docker-compose",
-                            
-                            "echo \\"✅ 설치된 버전 확인 중...\\"",
-                            "docker --version",
-                            "docker-compose --version",
+                            "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
 
                             "echo \\"✅ 최신 코드 가져오기...\\"",
-                            "git pull origin dev",
-                            "cd /home/ubuntu/Cloud-repo/monitoring",
+                            "[ -d \\"Cloud-repo\\" ] && cd Cloud-repo && git pull origin dev || git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
 
-                            "echo \\"✅ 기존 컨테이너 정리...\\"",
-                            "docker-compose down",
+                            "echo \\"✅ ECR 로그인 중...\\"",
+                            "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com",
+
+                            "echo \\"✅ 실행 중인 컨테이너 재시작...\\"",
+                            "docker ps -q | xargs -r docker restart",
+
+                            "echo \\"✅ ECR 최신 이미지 Pull...\\"",
+                            "docker-compose pull",
 
                             "echo \\"✅ 새로운 Docker 컨테이너 실행 (docker-compose up -d)...\\"",
-                            "docker-compose up -d",
+                            "docker-compose up -d --remove-orphans",
 
                             "echo \\"✅ 컨테이너 실행 상태 확인...\\"",
                             "docker ps -a",
@@ -115,7 +97,7 @@ pipeline {
                             "echo \\"✅ 컨테이너 헬스 체크...\\"",
                             "sleep 5",
                             "docker inspect --format='{{.State.Running}}' my-app"
-                        ]' \
+                        ]' \\
                         --region "$AWS_REGION"
                     """
                 }
