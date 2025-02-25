@@ -31,7 +31,7 @@ pipeline {
                 script {
                     sh """
                     aws ssm send-command --document-name "AWS-RunShellScript" \\
-                        --targets Key=instanceIds,Values="${PRIVATE_MONITORING_ID}" \\
+                        --targets Key=instanceIds,Values=\\"${PRIVATE_MONITORING_ID}\\" \\
                         --parameters 'commands=[
                             "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
 
@@ -42,7 +42,8 @@ pipeline {
 
                             "if [ -d \\"Cloud-repo\\" ]; then",
                             "   echo \\"✅ Cloud-repo 폴더가 존재합니다. Git Pull 수행 중...\\"",
-                            "   cd Cloud-repo && git pull origin dev",
+                            "   cd Cloud-repo && git status > /dev/null 2>&1 || (echo \\"❗ Git 리포지토리가 아님. 재설정 중...\\" && cd .. && rm -rf Cloud-repo && git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev)",
+                            "   git pull origin dev",
                             "else",
                             "   echo \\"❗ Cloud-repo 폴더가 없습니다. Git Clone 수행 중...\\"",
                             "   git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
@@ -57,12 +58,12 @@ pipeline {
                             "docker-compose pull",
 
                             "echo \\"✅ 실행 중인 컨테이너 확인 및 재시작...\\"",
-                            "if [ \$(docker ps -q | wc -l) -gt 0 ]; then",
+                            "RUNNING_CONTAINERS=\$(docker ps -q | wc -l)",
+                            "if [ \$RUNNING_CONTAINERS -gt 0 ]; then",
                             "   echo \\"✅ 실행 중인 컨테이너가 있습니다. 재시작 중...\\"",
                             "   docker ps -q | xargs -r docker restart",
                             "else",
-                            "   echo \\"✅ 실행 중인 컨테이너가 없습니다. 새로 실행합니다.\\"",
-                            "   docker-compose up -d --remove-orphans",
+                            "   echo \\"✅ 실행 중인 컨테이너가 없습니다. 새로 실행합니다.\\" && docker-compose up -d --remove-orphans",
                             "fi",
 
                             "echo \\"✅ 컨테이너 실행 상태 확인...\\"",
@@ -70,7 +71,7 @@ pipeline {
 
                             "echo \\"✅ 컨테이너 헬스 체크...\\"",
                             "sleep 5",
-                            "docker inspect --format='{{.State.Running}}' my-app"
+                            "docker inspect --format={{.State.Running}} my-app || echo \\"❌ 컨테이너가 정상적으로 실행되지 않았습니다.\\""
                         ]' \\
                         --region "${AWS_REGION}"
                     """
