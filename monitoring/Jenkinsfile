@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = credentials('AWS_REGION') 
-        ECR_REPO = credentials('ECR_REPO')
+        AWS_REGION = credentials('AWS_REGION')  // AWS 리전 설정
+        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')  // AWS 계정 ID
     }
 
     stages {
@@ -15,10 +15,13 @@ pipeline {
             }
         }
 
-        stage('Get AWS Account ID') {
+        stage('Check AWS Credentials') {
             steps {
                 script {
-                    env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
+                    sh '''
+                    echo "AWS_REGION: ${env.AWS_REGION}"
+                    echo "AWS_ACCOUNT_ID: ${env.AWS_ACCOUNT_ID}"
+                    '''
                 }
             }
         }
@@ -27,7 +30,7 @@ pipeline {
             steps {
                 script {
                     sh '''
-                    aws ecr get-login-password --region $env.AWS_REGION | docker login --username AWS --password-stdin $env.AWS_ACCOUNT_ID.dkr.ecr.$env.AWS_REGION.amazonaws.com
+                    aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com
                     '''
                 }
             }
@@ -50,7 +53,7 @@ pipeline {
 
                         // ECR에서 최신 SHA Digest 확인
                         def ecrDigest = sh(script: """
-                            aws ecr describe-images --repository-name oops/monitoring --image-ids imageTag=${imageName} --region $env.AWS_REGION --query 'imageDetails[0].imageDigest' --output text 2>/dev/null
+                            aws ecr describe-images --repository-name oops/monitoring --image-ids imageTag=${imageName} --region ${env.AWS_REGION} --query 'imageDetails[0].imageDigest' --output text 2>/dev/null
                         """, returnStdout: true).trim()
 
                         // Docker Hub에서 최신 SHA Digest 가져오기
@@ -88,8 +91,8 @@ pipeline {
                         def imageRepo = image["repo"]
 
                         sh """
-                        docker tag ${imageRepo}:latest $env.AWS_ACCOUNT_ID.dkr.ecr.$env.AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
-                        docker push $env.AWS_ACCOUNT_ID.dkr.ecr.$env.AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
+                        docker tag ${imageRepo}:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/oops/monitoring:${imageName}
+                        docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/oops/monitoring:${imageName}
                         """
                     }
                 }
