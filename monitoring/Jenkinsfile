@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = credentials('AWS_REGION')  // Jenkins Credentials에서 가져오기
-        ECR_REPO = credentials('ECR_REPO')  // Amazon ECR 리포지토리
+        AWS_REGION = credentials('AWS_REGION')  // AWS 리전
+        ECR_REPO = credentials('ECR_REPO')  // ECR 리포지토리
     }
 
     stages {
@@ -44,13 +44,15 @@ pipeline {
                         ["name": "promtail", "repo": "grafana/promtail"]
                     ]
 
+                    env.IMAGES_TO_PUSH = ""
+
                     for (image in images) {
                         def imageName = image["name"]
                         def imageRepo = image["repo"]
 
                         // ECR에서 현재 저장된 SHA Digest 가져오기
                         def ecrDigest = sh(script: """
-                            aws ecr describe-images --repository-name oops/monitoring --image-ids imageTag=${imageName} --region ${AWS_REGION} --query 'imageDetails[0].imageDigest' --output text 2>/dev/null
+                            aws ecr describe-images --repository-name oops/monitoring --image-ids imageTag=${imageName} --region ${AWS_REGION} --query 'imageDetails[0].imageDigest' --output text 2>/dev/null || echo "not_found"
                         """, returnStdout: true).trim()
 
                         // Docker Hub에서 최신 SHA Digest 가져오기
@@ -58,14 +60,19 @@ pipeline {
                             curl -s https://hub.docker.com/v2/repositories/${imageRepo}/tags/latest | jq -r '.images[0].digest' 2>/dev/null || echo "not_found"
                         """, returnStdout: true).trim()
 
+                        // 로컬 이미지 확인
+                        def localImageExists = sh(script: "docker images -q ${imageRepo}:latest", returnStdout: true).trim()
+
                         if (dockerHubDigest == "not_found") {
                             echo "⚠️ Docker Hub에서 ${imageRepo}:latest 정보를 가져오지 못했습니다. 기본적으로 Pull 진행."
                             sh "docker pull ${imageRepo}:latest"
-                        } else if (dockerHubDigest != ecrDigest) {
-                            echo "🔄 새로운 이미지 발견: ${imageRepo}, Pull 진행!"
+                            env.IMAGES_TO_PUSH += "${imageName} "
+                        } else if (dockerHubDigest != ecrDigest || localImageExists == "") {
+                            echo "🔄 새로운 이미지 발견 또는 로컬에 이미지 없음: ${imageRepo}, Pull 진행!"
                             sh "docker pull ${imageRepo}:latest"
+                            env.IMAGES_TO_PUSH += "${imageName} "
                         } else {
-                            echo "✅ 최신 이미지 유지됨: ${imageRepo}, Pull 생략!"
+                            echo "✅ 최신 이미지 유지됨: ${imageRepo}, Pull 및 Push 생략!"
                         }
                     }
                 }
@@ -73,6 +80,9 @@ pipeline {
         }
 
         stage('Tag and Push to ECR') {
+            when {
+                expression { env.IMAGES_TO_PUSH?.trim() }
+            }
             steps {
                 script {
                     def images = [
@@ -87,10 +97,16 @@ pipeline {
                         def imageName = image["name"]
                         def imageRepo = image["repo"]
 
-                        sh """
-                        docker tag ${imageRepo}:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
-                        docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
-                        """
+                        // Pull한 이미지만 Push 수행
+                        if (env.IMAGES_TO_PUSH.contains(imageName)) {
+                            echo "🚀 Pushing ${imageName} to ECR"
+                            sh """
+                            docker tag ${imageRepo}:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
+                            docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
+                            """
+                        } else {
+                            echo "✅ ${imageName}는 최신 버전이므로 Push 생략!"
+                        }
                     }
                 }
             }
