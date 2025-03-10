@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = credentials('AWS_REGION')  // AWS 리전
-        ECR_REPO = credentials('ECR_REPO')  // ECR 리포지토리
-        IMAGES_TO_PUSH = ""
+        AWS_REGION = credentials('AWS_REGION')
+        AWS_ACCOUNT_ID = credentials('AWS_ACCOUNT_ID')
+        ECR_REPO = credentials('ECR_REPO')
     }
 
     stages {
@@ -19,26 +19,29 @@ pipeline {
         stage('Get AWS Account ID') {
             steps {
                 script {
+                    echo "🔍 AWS 계정 ID 가져오기"
                     env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
                 }
             }
         }
 
-        stage('Login to ECR') {   
+        stage('Login to ECR') {
             steps {
                 script {
-                    sh '''
-                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-                    '''
+                    echo "🔑 AWS ECR 로그인 수행"
+                    def loginStatus = sh(script: '''
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                    ''', returnStatus: true)
+
+                    if (loginStatus != 0) {
+                        error "❌ AWS ECR 로그인 실패! Credentials를 확인하세요."
+                    }
                 }
             }
         }
 
         stage('Check & Pull latest images if needed') {
             steps {
-                script {
-                    echo "🔥 IMAGES_TO_PUSH 초기값: '${env.IMAGES_TO_PUSH}'"
-                }
                 script {
                     def images = [
                         ["name": "prometheus", "repo": "prom/prometheus"],
@@ -48,7 +51,7 @@ pipeline {
                         ["name": "promtail", "repo": "grafana/promtail"]
                     ]
 
-                    env.IMAGES_TO_PUSH = ""
+                    def imagesToPush = ""  // 로컬 변수로 설정
 
                     for (image in images) {
                         def imageName = image["name"]
@@ -67,7 +70,7 @@ pipeline {
                         if (ecrDigest == "not_found") {
                             echo "🚀 ECR에 ${imageName} 이미지 없음 → Pull & Push 실행"
                             sh "docker pull ${imageRepo}:latest"
-                            env.IMAGES_TO_PUSH += "${imageName} "
+                            imagesToPush += "${imageName} "
                         } else if (dockerHubDigest == "not_found") {
                             echo "⚠️ Docker Hub에서 ${imageRepo}:latest 정보를 가져오지 못했습니다. Pull & Push 생략."
                         } else if (dockerHubDigest == ecrDigest) {
@@ -75,16 +78,19 @@ pipeline {
                         } else {
                             echo "🔄 새로운 이미지 발견: ${imageRepo} → Pull & Push 실행"
                             sh "docker pull ${imageRepo}:latest"
-                            env.IMAGES_TO_PUSH += "${imageName} "
+                            imagesToPush += "${imageName} "
                         }
                     }
+
+                    env.IMAGES_TO_PUSH = imagesToPush.trim()  // 최종적으로 env 변수에 할당
+                    echo "🔥 IMAGES_TO_PUSH 최종값: '${env.IMAGES_TO_PUSH}'"
                 }
             }
         }
 
         stage('Tag and Push to ECR') {
             when {
-                expression { env.IMAGES_TO_PUSH && env.IMAGES_TO_PUSH.replaceAll("\\s", "").trim() }
+                expression { env.IMAGES_TO_PUSH?.trim() && env.IMAGES_TO_PUSH != "" }
             }
             steps {
                 script {
@@ -100,13 +106,20 @@ pipeline {
                         def imageName = image["name"]
                         def imageRepo = image["repo"]
 
-                        // Push할 이미지가 있는 경우만 실행
                         if (env.IMAGES_TO_PUSH.contains(imageName)) {
                             echo "🚀 Pushing ${imageName} to ECR"
+
+                            def localImageCheck = sh(script: "docker images -q ${imageRepo}:latest", returnStdout: true).trim()
+                            if (localImageCheck == "") {
+                                error "❌ ${imageRepo}:latest 이미지가 로컬에 존재하지 않습니다!"
+                            }
+
                             sh """
                             docker tag ${imageRepo}:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
                             docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
                             """
+                        } else {
+                            echo "✅ ${imageName}는 최신 버전이므로 Push 생략!"
                         }
                     }
                 }
