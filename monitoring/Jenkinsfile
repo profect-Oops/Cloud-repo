@@ -5,7 +5,7 @@ pipeline {
         AWS_REGION = credentials('AWS_REGION')  
         ECR_REPO = credentials('ECR_REPO') 
     }
-
+    
     stages {
         stage('Checkout Repository') {
             steps {
@@ -26,9 +26,9 @@ pipeline {
         stage('Login to ECR') {   
             steps {
                 script {
-                    sh """
-                    aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com
-                    """
+                    sh '''
+                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                    '''
                 }
             }
         }
@@ -36,13 +36,13 @@ pipeline {
         stage('Pull latest images from Docker Hub') {
             steps {
                 script {
-                    sh """
+                    sh '''
                     docker pull prom/prometheus:latest
                     docker pull grafana/grafana:latest
                     docker pull prom/node-exporter:latest
                     docker pull grafana/loki:latest
                     docker pull grafana/promtail:latest
-                    """
+                    '''
                 }
             }
         }
@@ -50,27 +50,26 @@ pipeline {
         stage('Tag and Push to ECR') {
             steps {
                 script {
-                    def images = [
-                        ["name": "prometheus", "repo": "prom/prometheus"],
-                        ["name": "grafana", "repo": "grafana/grafana"],
-                        ["name": "node-exporter", "repo": "prom/node-exporter"],
-                        ["name": "loki", "repo": "grafana/loki"],
-                        ["name": "promtail", "repo": "grafana/promtail"]
-                    ]
+                    sh '''
+                    docker tag prom/prometheus:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:prometheus
+                    docker tag grafana/grafana:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:grafana
+                    docker tag prom/node-exporter:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:node-exporter
+                    docker tag grafana/loki:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:loki
+                    docker tag grafana/promtail:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:promtail
 
-                    for (image in images) {
-                        def imageRepo = image["repo"]
-                        def ecrImage = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${imageRepo}:latest"
-
-                        echo "🚀 Pushing ${imageRepo} to ECR"
-                        sh """
-                        docker tag ${imageRepo}:latest ${ecrImage}
-                        docker push ${ecrImage}
-
-                        # 🔥 Push 후 불필요한 로컬 ECR 이미지 삭제
-                        docker rmi -f ${ecrImage} || true
-                        """
-                    }
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:prometheus
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:grafana
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:node-exporter
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:loki
+                    docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:promtail
+                    
+                    # 🔥 태그가 붙은 로컬 이미지 삭제 (ECR로 푸시한 후 필요 없음)
+                    docker rmi -f $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:prometheus || true
+                    docker rmi -f $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:grafana || true
+                    docker rmi -f $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:node-exporter || true
+                    docker rmi -f $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:loki || true
+                    docker rmi -f $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:promtail || true
+                    '''
                 }
             }
         }
