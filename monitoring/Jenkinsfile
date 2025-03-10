@@ -38,8 +38,6 @@ pipeline {
                 script {
                     echo "🔥 IMAGES_TO_PUSH 초기값: '${env.IMAGES_TO_PUSH}'"
                 }
-            }
-            steps {
                 script {
                     def images = [
                         ["name": "prometheus", "repo": "prom/prometheus"],
