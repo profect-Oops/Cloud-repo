@@ -26,9 +26,9 @@ pipeline {
         stage('Login to ECR') {   
             steps {
                 script {
-                    sh '''
-                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-                    '''
+                    sh """
+                    aws ecr get-login-password --region ${env.AWS_REGION} | docker login --username AWS --password-stdin ${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com
+                    """
                 }
             }
         }
@@ -36,13 +36,13 @@ pipeline {
         stage('Pull latest images from Docker Hub') {
             steps {
                 script {
-                    sh '''
+                    sh """
                     docker pull prom/prometheus:latest
                     docker pull grafana/grafana:latest
                     docker pull prom/node-exporter:latest
                     docker pull grafana/loki:latest
                     docker pull grafana/promtail:latest
-                    '''
+                    """
                 }
             }
         }
@@ -60,7 +60,7 @@ pipeline {
 
                     for (image in images) {
                         def imageRepo = image["repo"]
-                        def ecrImage = "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/${imageRepo}:latest"
+                        def ecrImage = "${env.AWS_ACCOUNT_ID}.dkr.ecr.${env.AWS_REGION}.amazonaws.com/${imageRepo}:latest"
 
                         echo "🚀 Pushing ${imageRepo} to ECR"
                         sh """
