@@ -4,7 +4,8 @@ pipeline {
     environment {
         AWS_REGION = credentials('AWS_REGION')  
         ECR_REPO = credentials('ECR_REPO') 
-
+    }
+    
     stages {
         stage('Checkout Repository') {
             steps {
