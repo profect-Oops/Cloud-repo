@@ -4,6 +4,7 @@ pipeline {
     environment {
         AWS_REGION = credentials('AWS_REGION')  // AWS 리전
         ECR_REPO = credentials('ECR_REPO')  // ECR 리포지토리
+        IMAGES_TO_PUSH = ""
     }
 
     stages {
