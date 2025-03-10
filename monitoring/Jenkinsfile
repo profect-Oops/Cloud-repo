@@ -2,7 +2,8 @@ pipeline {
     agent any
 
     environment {
-        PRIVATE_MONITORING_ID = "i-0a120872eb49bee5d"  // 프라이빗 EC2 인스턴스 ID
+        AWS_REGION = credentials('AWS_REGION')  
+        ECR_REPO = credentials('ECR_REPO')  
     }
 
     stages {
@@ -14,73 +15,55 @@ pipeline {
             }
         }
 
-        stage('Login to ECR') {
+        stage('Get AWS Account ID') {
             steps {
                 script {
-                    sh """
-                    aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 941377153895.dkr.ecr.ap-northeast-2.amazonaws.com
-                    """
+                    env.AWS_ACCOUNT_ID = sh(script: "aws sts get-caller-identity --query Account --output text", returnStdout: true).trim()
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Login to ECR') {   
             steps {
                 script {
-                    def commandId = sh(script: """
-                        aws ssm send-command --document-name "AWS-RunShellScript" \\
-                            --targets Key=instanceIds,Values="${PRIVATE_MONITORING_ID}" \\
-                            --parameters 'commands=[
-                                "echo \\"✅ 배포 시작: 기존 컨테이너 정리 및 최신 이미지 가져오기\\"",
-    
-                                "cd /home/ubuntu || exit 1",
-    
-                                "if [ -d \\"Cloud-repo\\" ]; then",
-                                "   echo \\"✅ Cloud-repo 폴더가 존재합니다. Git Pull 수행 중...\\"",
-                                "   cd Cloud-repo && git pull origin dev",
-                                "else",
-                                "   echo \\"❗ Cloud-repo 폴더가 없습니다. Git Clone 수행 중...\\"",
-                                "   git clone https://github.com/profect-Oops/Cloud-repo.git && cd Cloud-repo && git checkout dev",
-                                "fi",
+                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                }
+            }
+        }
 
-                                "cd /home/ubuntu/Cloud-repo/monitoring",
+        stage('Check & Pull only if new version exists') {
+            steps {
+                script {
+                    def images = [
+                        "prometheus",
+                        "grafana",
+                        "node-exporter",
+                        "loki",
+                        "promtail"
+                    ]
 
-                                "echo \\"✅ ECR 로그인 중...\\"",
-                                "aws ecr get-login-password --region ap-northeast-2 | docker login --username AWS --password-stdin 941377153895.dkr.ecr.ap-northeast-2.amazonaws.com",
-    
-                                "echo \\"✅ 최신 이미지 Pull...\\"",
-                                "docker-compose pull",
-    
-                                "docker-compose up -d",
-                                
-                                "echo \\"✅ 컨테이너 실행 상태 확인...\\"",
-                                "docker ps -a",
-    
-                                "echo \\"✅ 컨테이너 헬스 체크...\\"",
-                                "sleep 5",
-                                "docker inspect --format={{.State.Running}} my-app || echo \\"❌ 컨테이너가 정상적으로 실행되지 않았습니다.\\""
-                            ]' \\
-                            --region "ap-northeast-2" \\
-                            --query "Command.CommandId" --output text
-                    """, returnStdout: true).trim()
+                    for (image in images) {
+                        // Docker Hub에서 최신 SHA Digest 가져오기
+                        def dockerHubDigest = sh(script: """
+                            curl -s https://hub.docker.com/v2/repositories/prom/${image}/tags/latest | jq -r '.images[0].digest'
+                        """, returnStdout: true).trim()
 
-                    echo "🔍 SSM Command ID: ${commandId}"
+                        // ECR에서 현재 저장된 SHA Digest 확인
+                        def ecrDigest = sh(script: """
+                            aws ecr describe-images --repository-name oops/monitoring --image-ids imageTag=${image} --region ${AWS_REGION} --query 'imageDetails[0].imageDigest' --output text 2>/dev/null
+                        """, returnStdout: true).trim()
 
-                    // SSM 실행 결과 확인
-                    sleep 10  // SSM 명령 실행을 위한 대기 시간
-
-                    def ssmStatus = sh(script: """
-                        aws ssm list-command-invocations --command-id ${commandId} --details --region ap-northeast-2 \\
-                        --query "CommandInvocations[0].Status" --output text
-                    """, returnStdout: true).trim()
-
-                    echo "📌 SSM Command Status: ${ssmStatus}"
-
-                    if (ssmStatus != "Success") {
-                        error("🚨 SSM 배포 실패! Command ID: ${commandId}")
+                        if (dockerHubDigest != ecrDigest) {
+                            echo "🔄 새로운 이미지 발견: ${image}, Pull 및 Push 진행!"
+                            sh """
+                            docker pull prom/${image}:latest
+                            docker tag prom/${image}:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:${image}
+                            docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/oops/monitoring:${image}
+                            """
+                        } else {
+                            echo "✅ 최신 이미지 유지됨: ${image}, Pull 및 Push 생략!"
+                        }
                     }
-
-                    echo "✅ SSM 배포 성공!"
                 }
             }
         }
