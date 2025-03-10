@@ -60,19 +60,18 @@ pipeline {
                             curl -s https://hub.docker.com/v2/repositories/${imageRepo}/tags/latest | jq -r '.images[0].digest' 2>/dev/null || echo "not_found"
                         """, returnStdout: true).trim()
 
-                        // 로컬 이미지 확인
-                        def localImageExists = sh(script: "docker images -q ${imageRepo}:latest", returnStdout: true).trim()
-
-                        if (dockerHubDigest == "not_found") {
-                            echo "⚠️ Docker Hub에서 ${imageRepo}:latest 정보를 가져오지 못했습니다. 기본적으로 Pull 진행."
+                        if (ecrDigest == "not_found") {
+                            echo "🚀 ECR에 ${imageName} 이미지 없음 → Pull & Push 실행"
                             sh "docker pull ${imageRepo}:latest"
                             env.IMAGES_TO_PUSH += "${imageName} "
-                        } else if (dockerHubDigest != ecrDigest || localImageExists == "") {
-                            echo "🔄 새로운 이미지 발견 또는 로컬에 이미지 없음: ${imageRepo}, Pull 진행!"
-                            sh "docker pull ${imageRepo}:latest"
-                            env.IMAGES_TO_PUSH += "${imageName} "
+                        } else if (dockerHubDigest == "not_found") {
+                            echo "⚠️ Docker Hub에서 ${imageRepo}:latest 정보를 가져오지 못했습니다. Pull & Push 생략."
+                        } else if (dockerHubDigest == ecrDigest) {
+                            echo "✅ 최신 이미지 유지됨: ${imageRepo} → Pull & Push 생략"
                         } else {
-                            echo "✅ 최신 이미지 유지됨: ${imageRepo}, Pull 및 Push 생략!"
+                            echo "🔄 새로운 이미지 발견: ${imageRepo} → Pull & Push 실행"
+                            sh "docker pull ${imageRepo}:latest"
+                            env.IMAGES_TO_PUSH += "${imageName} "
                         }
                     }
                 }
@@ -97,15 +96,13 @@ pipeline {
                         def imageName = image["name"]
                         def imageRepo = image["repo"]
 
-                        // Pull한 이미지만 Push 수행
+                        // Push할 이미지가 있는 경우만 실행
                         if (env.IMAGES_TO_PUSH.contains(imageName)) {
                             echo "🚀 Pushing ${imageName} to ECR"
                             sh """
                             docker tag ${imageRepo}:latest $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
                             docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/oops/monitoring:${imageName}
                             """
-                        } else {
-                            echo "✅ ${imageName}는 최신 버전이므로 Push 생략!"
                         }
                     }
                 }
