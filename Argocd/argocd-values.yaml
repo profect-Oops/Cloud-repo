@@ -1,0 +1,24 @@
+# argocd-values.yaml
+
+global:
+  domain: # ArgoCD 도메인 설정
+  nodeSelector:
+    "kubernetes.io/hostname": "worker-node-4"  # 모든 ArgoCD 리소스를 특정 노드에 배포
+
+server:
+  enabled: true
+  replicas: 1  # ArgoCD 서버 인스턴스를 1개로 유지 (HA 구성 아님)
+  service:
+    type: NodePort
+    selector:
+      app.kubernetes.io/name: argocd-server
+  ports:
+    - name: http
+      port: 80  # 서비스 내부 포트 (ClusterIP)
+      targetPort: 8080  # Pod에서 사용하는 포트
+      nodePort: 30080  # NodePort를 통해 외부에서 접근 가능
+
+configs:
+  params:
+    "server.insecure": "true"  # (내부)HTTPS를 비활성화하고 HTTP만 사용
+

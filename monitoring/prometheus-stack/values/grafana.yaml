@@ -1,0 +1,20 @@
+# grafana.yaml
+grafana:
+  nodeSelector:
+    "kubernetes.io/hostname": "worker-node-4" 
+  enabled: true
+  adminUser: #ID
+  adminPassword: #PW
+  service:
+    type: NodePort
+    port: 3000
+    targetPort: 3000
+    nodePort: 32000
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana/" # 경로 설정(경로 기반 라우팅(/grafana*))
+      serve_from_sub_path: true # 서브 경로에서 서비스 가능하도록 설정
+  sidecar: # 자동 대시보드 설정
+    dashboards:
+      enabled: true
+  

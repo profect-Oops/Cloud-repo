@@ -1,0 +1,8 @@
+# alertmanager.yaml
+alertmanager:
+  nodeSelector:
+    kubernetes.io/hostname: "${NODE}"
+
+kubeStateMetrics:
+  nodeSelector:
+    kubernetes.io/hostname: "${NODE}"

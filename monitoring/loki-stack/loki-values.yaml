@@ -1,0 +1,100 @@
+loki:
+  replicas: 1  # 또는 아래처럼 singleBinary 안에도 다시 명시
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  nodeSelector:
+    kubernetes.io/hostname: worker-node-4
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: s3
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+  storage_config:
+    aws:
+      region: #사용하는 리전
+      bucketnames: # 버킷 이름
+      s3forcepathstyle: false
+  pattern_ingester:
+      enabled: true
+  limits_config:
+    allow_structured_metadata: true
+    volume_enabled: false
+    retention_period: 672h # 28 days retention
+
+  storage:
+    type: s3
+    bucketNames:
+      chunks: #버킷 이름
+      ruler: #버킷 이름
+      admin: #버킷 이름
+    s3:
+      endpoint: #S3 엔드포인트
+      region: #사용하는 리전
+      accessKeyId: #사용자 액세스 키 ID
+      secretAccessKey: #사용자 액세스 키
+      # AWS signature version (e.g., v2 or v4)
+      signatureVersion: v4
+      s3ForcePathStyle: false
+      insecure: false
+      # HTTP configuration settings
+      http_config: {}
+
+deploymentMode: SingleBinary
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: false  # → PVC 안 씀
+  extraVolumeMounts:
+    - name: var-loki
+      mountPath: /var/loki   # → Loki가 데이터를 여기에 저장
+  extraVolumes:
+    - name: var-loki
+      emptyDir: {}           # → Pod 안에 임시 디스크 생성
+
+
+minio:
+  enabled: false
+
+# PVC 없이 S3만 사용하므로 persistence 제거
+
+# 필수 구성 요소 외 나머지 모두 비활성화
+canary:
+  enabled: false
+gateway:
+  enabled: false
+resultsCache:
+  enabled: false
+chunksCache:
+  enabled: false
+
+# distributed 모드 비활성화
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+ingester:
+  replicas: 0
+querier:
+  replicas: 0
+queryFrontend:
+  replicas: 0
+queryScheduler:
+  replicas: 0
+distributor:
+  replicas: 0
+compactor:
+  replicas: 0
+indexGateway:
+  replicas: 0
+bloomCompactor:
+  replicas: 0
+bloomGateway:
+  replicas: 0

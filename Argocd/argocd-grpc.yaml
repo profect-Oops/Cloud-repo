@@ -10,10 +10,11 @@ metadata:
   namespace: argocd
 spec:
   ports:
-    - name: "443"
-      port: 443      # ALB가 gRPC 요청을 수신하는 포트 (HTTPS)
+    - name: "80"
+      port: 80      # HTTP
       protocol: TCP
       targetPort: 8080
+      nodePort: 30081  # 클러스터 외부(ALB → EC2 노드)
   selector:
     app.kubernetes.io/name: argocd-server
   sessionAffinity: None

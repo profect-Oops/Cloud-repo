@@ -1,0 +1,12 @@
+# node-exporter.yaml
+nodeExporter:
+  enabled: true
+  daemonset:
+    enabled: true # DaemonSet으로 배포 (모든 노드에서 실행)
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi

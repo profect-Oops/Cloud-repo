@@ -1,0 +1,41 @@
+#argocd-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    alb.ingress.kubernetes.io/backend-protocol: HTTP
+    alb.ingress.kubernetes.io/certificate-arn: # AWS SSL/TTL 인증서 ARN
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/load-balancer-name: argocd-alb # 소문자
+    alb.ingress.kubernetes.io/security-groups: # 미리 설정한 보안 그룹 argocd_ALB
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    alb.ingress.kubernetes.io/target-type: instance
+    alb.ingress.kubernetes.io/conditions.argogrpc: |
+        [{"field":"http-header","httpHeaderConfig":{"httpHeaderName": "Content-Type", "values":["application/grpc"]}}]
+    alb.ingress.kubernetes.io/target-node-labels: "kubernetes.io/hostname=worker-node-4" # 해당 label을 가진 노드만 ALB 대상 그룹에 등록
+  name: argocd
+  namespace: argocd
+spec:
+  ingressClassName: alb # ingress 컨트롤러 설정
+  rules:
+  - host: # argocd 도메인 주소 설정
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argogrpc  # gRPC 트래픽을 argogrpc 서비스로 라우팅
+            port:
+              number: 80
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: argocd-server  # UI 트래픽을 argocd-server로 라우팅
+            port:
+              number: 80
+  tls:
+  - hosts:
+      - # argocd 도메인 주소 설정

@@ -1,0 +1,35 @@
+# prometheus.yaml
+global:
+  nodeSelector:
+    "kubernetes.io/hostname": "worker-node-4"  # 모든 ArgoCD 리소스를 특정 노드에 배포
+
+prometheus:
+  service:
+    type: NodePort # 외부 UI 접근
+    port: 9090
+    targetPort: 9090
+    nodePort: 32090
+  enabled: true
+  prometheusSpec:
+    externalUrl: # Prometheus 도메인 경로
+    routePrefix: "/prometheus"
+    replicas: 1
+    retention: "7d"
+    scrapeInterval: "15s"
+    evaluationInterval: "15s"
+    enableRemoteWriteReceiver: true
+    nodeSelector:
+      kubernetes.io/hostname: "worker-node-4"  # 위치
+
+    additionalScrapeConfigs:
+      - job_name: 'airflow'
+        static_configs:
+          - targets: #서비스경로:포트번호
+
+prometheusOperator:
+  nodeSelector:
+    kubernetes.io/hostname: "worker-node-4"
+
+kubeStateMetrics:
+  nodeSelector:
+    kubernetes.io/hostname: "worker-node-4"
